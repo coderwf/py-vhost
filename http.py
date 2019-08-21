@@ -13,7 +13,7 @@ class HttpConn(SharedConn):
         self.request = None
 
 
-def Http(_socket: socket.socket)->HttpConn:
+def http(_socket: socket.socket)->HttpConn:
     v_buff, tee = new_shared_conn(_socket)
     r_reader = RequestReader(tee)
     return HttpConn(r_reader.read_request(), v_buff, _socket)

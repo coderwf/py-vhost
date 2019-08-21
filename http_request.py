@@ -4,8 +4,7 @@
 
 
 from urllib.parse import unquote
-from shared import Reader
-from shared import EOF
+from shared import Reader, Writer, EOF, BufferReader
 
 
 SupportMethods = {"GET", "POST", "PUT", "HEAD", "DELETE", "TRACE"}
@@ -44,6 +43,9 @@ class Request:
 
         # 如果有content则为content的length
         self.content_length = 0
+
+    def to_bytes(self)->bytes:
+        pass
 
     @property
     def method(self)->str:
@@ -133,54 +135,11 @@ def parse_request_headers(line)->(str, str):
     return k, v
 
 
-class RequestReader:
+class RequestReader(BufferReader):
     def __init__(self, _reader: Reader, chunk_size: int = 1024):
-        self._reader = _reader
-        self._buffer = b""
-        self._search_loc = 0
-        self._chunk_size = chunk_size
+        BufferReader.__init__(self, reader=_reader, chunk_size=chunk_size)
 
-    def _fill(self):
-        bulk = self._reader.read(self._chunk_size)
-        if not bulk:
-            raise EOF
-        self._buffer += bulk
-
-    def read_line(self, encoding="utf-8")->str:
-        """
-        读取直到\n
-        返回不包括\n如果前一个为\r则\r也不包括
-        :return:
-        """
-        line = self.read_delimiter(delimiter=b"\n")
-        line = line[: -1]
-
-        # 13 == "\r"
-        if len(line) > 0 and line[-1] == 13:
-            line = line[: -1]
-        return line.decode(encoding=encoding)
-
-    def _search(self, delimiter)->int:
-        loc = self._buffer.find(delimiter, self._search_loc)
-        if loc != -1:
-            self._search_loc = len(self._buffer)
-        return loc
-
-    # 不包括
-    def read_delimiter(self, delimiter)->bytes:
-        loc = self._search(delimiter)
-
-        while loc == -1:
-            self._fill()
-            loc = self._search(delimiter)
-
-        # 找到了
-        res = self._buffer[:loc+1]
-        self._buffer = self._buffer[loc+1:]
-        self._search_loc = 0
-        return res
-
-    def read_request(self)->Request:
+    def read_request(self) -> Request:
         """
         读取一个request
         :return:
@@ -194,7 +153,10 @@ class RequestReader:
             k, v = parse_request_headers(header_line)
             request.set_header(k, v)
             header_line = self.read_line()
+        request.content_length = request.header("Content-Length", int)
         return request
 
 
+def write_request(request: Request, writer: Writer):
+    writer.write(request.to_bytes())
 

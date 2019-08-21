@@ -12,7 +12,7 @@ class Reader:
 
 
 class Writer:
-    def write(self, bs: bytes):
+    def write(self, bs: bytes)->int:
         pass
 
 
@@ -26,10 +26,11 @@ class SocketRW(Reader, Writer):
             raise EOF
         return chunk
 
-    def write(self, bs: bytes):
+    def write(self, bs: bytes)->int:
         while len(bs) > 0:
             n = self._socket.send(bs)
             bs = bs[n:]
+        return len(bs)
 
 
 class Conn:
@@ -62,6 +63,9 @@ class Conn:
 class Buffer(Reader, Writer):
     def __init__(self, init_bytes=b""):
         self._buff = init_bytes
+
+    def len(self):
+        return len(self._buff)
 
     def read(self, chunk_size=1024):
         if len(self._buff) == 0:
@@ -105,6 +109,66 @@ class SharedConn(Conn):
             self._v_buff = None
 
         return read
+
+
+class BufferReader:
+    def __init__(self, reader: Reader, chunk_size=1024):
+            self._reader = reader
+            self._buffer = b""
+            self._search_loc = 0
+            self._chunk_size = chunk_size
+
+    def _fill(self):
+        bulk = self._reader.read(self._chunk_size)
+        if not bulk:
+            raise EOF
+        self._buffer += bulk
+
+    def read_line(self, encoding="utf-8") -> str:
+        """
+        读取直到\n
+        返回不包括\n如果前一个为\r则\r也不包括
+        :return:
+        """
+        line = self.read_delimiter(delimiter=b"\n")
+        line = line[: -1]
+
+        # 13 == "\r"
+        if len(line) > 0 and line[-1] == 13:
+            line = line[: -1]
+        return line.decode(encoding=encoding)
+
+    def _search(self, delimiter) -> int:
+        loc = self._buffer.find(delimiter, self._search_loc)
+        if loc != -1:
+            self._search_loc = len(self._buffer)
+        return loc
+
+    # 不包括
+    def read_delimiter(self, delimiter: bytes) -> bytes:
+        loc = self._search(delimiter)
+
+        while loc == -1:
+            self._fill()
+            loc = self._search(delimiter)
+
+        # 找到了
+        res = self._buffer[:loc + 1]
+        self._buffer = self._buffer[loc + 1:]
+        self._search_loc = 0
+        return res
+
+    def read_until_n(self, n: int)->bytes:
+        """
+        一共直到读取n个字节
+        当缓存buffer长度小于n则需要从reader中读取填充直到buffer长度不小于n
+        :return:
+        """
+        while len(self._buffer) < n:
+            self._fill()
+        chunk = self._buffer[: n]
+        self._buffer = self._buffer[n:]
+        return chunk
 
 
 def new_shared_conn(s: socket.socket) ->(Buffer, TeeReader):
