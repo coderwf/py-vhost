@@ -12,6 +12,11 @@ class HttpConn(SharedConn):
     def free(self):
         self.request = None
 
+    def server_name(self)->str:
+        if self.request is None:
+            return ""
+        return self.request.header("Host")
+
 
 def http(_socket: socket.socket)->HttpConn:
     v_buff, tee = new_shared_conn(_socket)
