@@ -19,13 +19,14 @@ class CrackConn(Conn):
         2.每次读取先从v_buffer中读取,读到则直接返回,否则进行第一步
         3.body采取分段读取
         """
-
+        # 第一个request
         self._request_handler = request_handler
         self._v_buff = Buffer()
         self._request_reader = RequestReader(SocketRW(_socket), 512)
         self._read_error = None
         self._body_len = 0
         Conn.__init__(self, _socket)
+        self.request = self._read_request()
 
     def set_request_handler(self, request_handler):
         self._request_handler = request_handler
@@ -34,10 +35,10 @@ class CrackConn(Conn):
         if self._v_buff.len() > 0:
             return self._v_buff.read(buff_size)
 
-        self._read_request()
+        self._read_full_request()
         return self._v_buff.read()
 
-    def _read_request(self):
+    def _read_full_request(self):
         """
         body没读取完则继续读取body
         :return:
@@ -45,12 +46,17 @@ class CrackConn(Conn):
         if self._body_len > 0:
             self._read_request_body()
             return
+        self._read_request()
+
+    def _read_request(self)->Request:
         req = self._request_reader.read_request()
-        self._body_len = req.content_length if req.content_length else 0
+        self.request = req
+        self._body_len = req.content_length
         if self._request_handler:
             req = self._request_handler(req)
             req.content_length = self._body_len
         self._v_buff.write(req.to_bytes())
+        return req
 
     def _read_request_body(self):
         # 每次只读取512字节

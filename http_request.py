@@ -2,9 +2,8 @@
 # @Time    : 2019-08-18 22:48
 # @File    : http_request.py
 
-
-from urllib.parse import unquote
-from shared import Reader, Writer, EOF, BufferReader
+from requests.utils import requote_uri, unquote
+from shared import Reader, Writer, EOF, BufferReader, Buffer
 
 
 SupportMethods = {"GET", "POST", "PUT", "HEAD", "DELETE", "TRACE"}
@@ -42,10 +41,29 @@ class Request:
         self._headers = None
 
         # 如果有content则为content的length
-        self.content_length = 0
+        # -1表示请求中没有content-length
+        self.content_length = -1
 
     def to_bytes(self)->bytes:
-        pass
+        buffer = Buffer()
+        if self._method is None or self._uri is None or self._version is None:
+            raise ValueError("invalid request")
+
+        buffer.write_str("%s " % self.method)
+        print(requote_uri(self.uri))
+        buffer.write_str("%s " % requote_uri(self.uri))
+        buffer.write_str("%s\r\n" % self.version)
+
+        if self._headers is None:
+            return buffer.bytes()
+
+        if self.content_length >= 0:
+            self._headers["Content-Length"] = self.content_length
+
+        for k, v in self._headers.items():
+            buffer.write_str("%s: %s\r\n" % (str(k), str(v)))
+        buffer.write_str("\r\n")
+        return buffer.bytes()
 
     @property
     def method(self)->str:
@@ -153,7 +171,8 @@ class RequestReader(BufferReader):
             k, v = parse_request_headers(header_line)
             request.set_header(k, v)
             header_line = self.read_line()
-        request.content_length = request.header("Content-Length", int)
+        cl = request.header("Content-Length", int)
+        request.content_length = cl if cl is not None else -1
         return request
 
 

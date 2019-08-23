@@ -16,6 +16,10 @@ class Writer:
         pass
 
 
+class ReaderWriter(Reader, Writer):
+    pass
+
+
 class SocketRW(Reader, Writer):
     def __init__(self, _socket: socket.socket):
         self._socket = _socket
@@ -33,7 +37,7 @@ class SocketRW(Reader, Writer):
         return len(bs)
 
 
-class Conn:
+class Conn(ReaderWriter):
     def __init__(self, _socket: socket.socket):
         self._socket = _socket
 
@@ -59,6 +63,12 @@ class Conn:
     def close(self):
         return self._socket.close()
 
+    def read(self, chunk_size)->bytes:
+        return self.recv(chunk_size)
+
+    def write(self, bs: bytes)->int:
+        return self.send(bs)
+
 
 class Buffer(Reader, Writer):
     def __init__(self, init_bytes=b""):
@@ -76,6 +86,12 @@ class Buffer(Reader, Writer):
 
     def write(self, bs: bytes):
         self._buff += bs
+
+    def write_str(self, s: str, encoding="utf-8"):
+        self._buff += s.encode(encoding=encoding)
+
+    def bytes(self):
+        return self._buff
 
 
 class TeeReader(Reader):
@@ -177,3 +193,24 @@ def new_shared_conn(s: socket.socket) ->(Buffer, TeeReader):
 
     tee = TeeReader(s_reader, v_buff)
     return v_buff, tee
+
+
+def io_copy(src: Conn, target: Conn, r_flags=0, s_flags=0)->int:
+    """
+    从src中读取数据并放入到target中,返回一共读取的字节数
+    :param src:
+    :param target:
+    :param r_flags:
+    :param s_flags:
+    :return:
+    """
+    copied = 0
+
+    while True:
+        chunk = src.recv(1024, flags=r_flags)
+        if not chunk:
+            return copied
+        while chunk:
+            n = target.send(chunk, flags=s_flags)
+            copied += n
+            chunk = chunk[n:]
