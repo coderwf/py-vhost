@@ -26,6 +26,20 @@ class RequestValueError(RequestError):
     pass
 
 
+class Query(dict):
+    def __init__(self, params: dict = None):
+        dict.__init__(self, params)
+
+    def get_value(self, k, default=None, _typ=None):
+        val = self.get(k, default)
+        if val is None:
+            return val
+        return _typ(val) if _typ else val
+
+    def set(self, k, v):
+        self[k] = v
+
+
 class Request:
     def __init__(self):
         # 请求方法
@@ -43,6 +57,8 @@ class Request:
         # 如果有content则为content的length
         # -1表示请求中没有content-length
         self.content_length = -1
+        #
+        self.query = Query()
 
     def to_bytes(self)->bytes:
         buffer = Buffer()
